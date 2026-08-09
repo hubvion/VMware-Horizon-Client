@@ -1,1 +1,79 @@
-# VMware-Horizon-Client
+# VMware Horizon Client
+
+## Introduction
+
+VMware Horizon Client is an endpoint application for accessing remote desktops and published applications delivered through a Horizon environment. The client does not decide which resources a user may run. It connects to a Horizon server that acts as a broker, authenticates the user, evaluates entitlements, and returns the desktops and applications assigned to that account. Application execution and most data processing remain on the remote system, while the client transports display output, keyboard and mouse input, audio, and selected local resources.
+
+Connections between the Windows client and the Horizon server use TLS. The standard TLS port is 443, although a deployment can expose another port and use a server address in the form `servername:port`. Authentication can involve Active Directory credentials, a user principal name, domain-qualified credentials, RSA SecurID, RADIUS, or a smart-card PIN, depending on administrator policy. Some deployments also support integrated login as the current Windows user or anonymous access to specifically published applications.
+
+After authentication, users can start a complete virtual desktop or an individual published application. VMware Blast and PCoIP can provide the interactive display channel when enabled by the environment. Horizon Client also integrates endpoint capabilities through controlled redirection mechanisms for files, printers, USB devices, scanners, webcams, microphones, serial ports, clipboard data, and multiple monitors. These functions are policy-dependent. For IT operations, reliable use therefore requires separating client configuration, server policy, remote-session state, and endpoint hardware when diagnosing access or performance problems. ([Lojic][1])
+
+## Connection, Authentication, and Session Management
+
+A Horizon connection should be treated as a sequence of network, trust, authentication, entitlement, and session-selection stages. Before troubleshooting the remote desktop itself, confirm that the endpoint can reach the configured broker or gateway and, where required, establish the corporate VPN. If a nonstandard TLS port is used, the server entry can include it explicitly, for example `horizon.example.net:1443`. A failure before the login prompt usually points to reachability, name resolution, TLS, proxy, or certificate validation rather than a problem inside the virtual desktop.
+
+Certificate validation can be configured at different trust levels. The strict mode refuses a connection when certificate checks fail; a warning mode allows the user to continue after certain validation failures; certificate checking can also be disabled if policy permits. In managed environments, administrators can lock this setting. When an SSL proxy is part of the connection path, the client can allow certificate checking through that proxy. In production environments, certificate errors should be investigated rather than routinely bypassed because a mismatch, expiration, or untrusted chain can indicate a problem in the access path.
+
+At authentication time, Horizon Client accepts several account formats. A user principal name such as `user@example.net` is treated as a UPN, while `domain\user` can be used when the domain selector is unavailable. Additional authentication factors such as RSA SecurID or RADIUS can be requested before the normal account login. After successful authentication, the resource selector shows only entitled desktops and applications.
+
+Before launching a desktop, the user may be allowed to choose VMware Blast or PCoIP and select a display layout. Protocol selection is session-sensitive: if an existing published desktop is already running with another protocol, changing protocols can require logging off the existing session.
+
+Disconnecting and logging off must also be distinguished operationally. A disconnect can leave applications running so that the session can be resumed later; logging off closes the operating-system session and can destroy unsaved application state. Administrator policy can change this behavior and automatically log off disconnected sessions. Autoconnect can also be configured to start a specific remote desktop immediately after server login, but it does not provide the same behavior for published applications. 
+
+## Data Redirection and Local File Integration
+
+Data movement between the endpoint and remote environment is controlled through several independent redirection channels. Client Drive Redirection exposes selected local folders, mapped drives, and removable storage to remote desktops and published applications. In a Windows remote desktop, redirected locations normally appear in File Explorer under This PC or Computer. Mapped drives can use UNC paths, and a shared folder name can contain up to 117 characters. Cloud-synchronized locations such as OneDrive or Google Drive are not handled as normal shared folders by this mechanism.
+
+The sharing configuration applies across remote desktops and published applications for the connection rather than being limited to a single application. Administrators can hide or disable the feature, while users can be permitted to expose a specific directory, their local user directory, or removable storage. An important implementation detail is that USB storage should not be claimed simultaneously by USB Redirection and Client Drive Redirection. If USB automatic connection captures the device, its contents cannot also be exposed through folder sharing.
+
+Published applications can integrate with the local Windows file-association mechanism. When enabled, a remote application can appear in the local Open with menu. For example, a local `.docx` file can be associated with a remotely hosted word processor. The application executes in the remote infrastructure while the local file is made available through the permitted redirection path.
+
+Clipboard and drag-and-drop are separate policy-controlled mechanisms. Administrators can allow transfer from client to remote, remote to client, both directions, or neither. Clipboard handling supports text, rich text, HTML, bitmap data, and files. Large formatted payloads can lose formatting when configured clipboard limits are exceeded.
+
+Drag-and-drop can transfer files, folders, text, rich text, and images when VMware Blast or PCoIP is used. The documented default limit for generic drag data is 1 MB, with client-to-remote transfer enabled by default, although both size and direction can be changed centrally. Dragging directly between two remote desktops or between two published applications is not supported.
+
+URL Content Redirection provides another policy boundary. Selected links clicked inside a remote environment can be opened on the local endpoint, while selected local links can be routed into a remote desktop or published application. This allows administrators to define where particular web, mail, or other URI-based content should execute. 
+
+## Display, Input, and Peripheral Redirection
+
+Display configuration is stored per remote desktop and can directly affect support cases. A desktop can operate in full-screen, multi-monitor, large-window, small-window, or custom modes. The predefined window sizes described for the Windows client include 1904 × 978 and 640 × 480 pixels. In multi-monitor configurations, specific adjacent displays can be selected when permitted by policy. Published applications can also be limited to selected monitors.
+
+High-DPI troubleshooting requires distinguishing Display Scaling from DPI Synchronization. Display Scaling enlarges the rendered session when the endpoint and remote DPI values differ. For example, if the remote desktop uses 100 percent DPI while the endpoint uses 200 percent, the client can scale the image by a factor of two. DPI Synchronization instead changes the remote DPI to correspond to the endpoint and generally produces sharper text and icons. If both mechanisms are enabled, only one takes effect at a time. Some custom scaling changes require logging out and reconnecting.
+
+Peripheral redirection should use the channel intended for the hardware. Generic USB Redirection makes a locally attached USB device available to the remote session, but the endpoint cannot use that device while it is claimed remotely. USB devices can be connected manually, at client startup, or automatically when inserted. Initial connection can require a remote driver, and device enumeration may take several seconds. Redirecting USB network adapters or touch devices should be avoided because it can disrupt endpoint connectivity or input.
+
+VMware Integrated Printing is different from raw USB printer redirection. Integrated Printing exposes local or network printers without requiring the printer driver inside the remote Windows desktop. A printer passed through generic USB instead requires compatible drivers in both environments and becomes unavailable to the local OS while redirected.
+
+Scanners should use Scanner Redirection rather than generic USB transport. TWAIN and WIA devices require the hardware driver on the client but not in the remote desktop, and scanner-specific redirection uses substantially less bandwidth. Excessively large scans or very high scanning resolutions can cause failures and should be reduced or cropped when troubleshooting. ([Lojic][1])
+
+Webcams and microphones are designed to use Real-Time Audio-Video rather than generic USB redirection. RTAV supports standard webcams, USB audio hardware, and analog audio input while reducing network bandwidth requirements. A device actively used by a local application cannot simultaneously be consumed by the remote session. Preferred webcams and microphones can be selected when multiple devices are attached, and compatible environments can redirect multiple devices simultaneously.
+
+Serial Port Redirection provides similar specialization for RS-232 and USB-to-serial hardware. Required adapter drivers remain on the endpoint. Local COM ports are mapped into the remote desktop and can be renumbered automatically when a port conflict exists. If an application expects a specific COM number, the mapping can be adjusted. A port that is open locally cannot be used remotely at the same time, and the port should be released by the application before it is disconnected.
+
+For graphics-intensive software, Relative Mouse mode can improve pointer behavior with VMware Blast or PCoIP by transmitting relative rather than absolute movement. This is useful for CAD and other 3D workloads. In a windowed session, `Ctrl+Alt` releases the pointer if Relative Mouse prevents it from leaving the remote desktop window. 
+
+## Published Applications and Session Collaboration
+
+Published applications are remote processes presented in individual windows so that they behave similarly to local Windows applications. They can appear on the client taskbar, expose notification-area icons, and be launched through client-side or server-provided shortcuts. Closing the Horizon resource selector does not necessarily terminate an active published application. The server-side application session can remain running after the client disconnects.
+
+Reconnect behavior can be configured to prompt before reopening existing applications, restore their windows automatically, or leave the applications running without automatically reopening them. This distinction is useful on shared endpoints: automatic reconnection provides continuity on assigned workstations, while prompting gives operators greater control when several server-side applications remain active.
+
+Some published applications support multi-session operation when the administrator enables it. In this mode, opening the same application from a second endpoint creates another application session rather than transferring the first session to the second endpoint. Software that does not support multiple instances is unsuitable for this mode. Because disconnection can terminate certain multi-session application sessions, important data should not remain only in unsaved application state.
+
+For multilingual environments, Horizon Client can extend a locally installed input method editor into published applications. This allows an endpoint IME to provide non-English character input without requiring the same IME on the application host. The endpoint input language must correspond to the selected IME, and changing the feature requires a session restart before the setting becomes active.
+
+Session Collaboration provides controlled shared access to a remote desktop. The session owner can invite authenticated users, monitor their connection state, revoke access, and optionally hand over mouse and keyboard control. Collaboration uses VMware Blast and applies to remote desktops rather than published applications. Only the primary monitor is visible to collaborators.
+
+The collaborator receives a deliberately restricted session. Features such as USB Redirection, Real-Time Audio-Video, Client Drive Redirection, clipboard transfer, smart-card redirection, and VMware Integrated Printing are unavailable to the collaborating user. This makes the feature useful for remote support or joint troubleshooting without automatically exposing the endpoint resources of the session owner. ([Lojic][1])
+
+## Troubleshooting and Recovery
+
+Troubleshooting is more effective when session state is checked before repairing the client. If an application is slow while pointer and keyboard response remains normal, investigate the remote workload, guest CPU or storage load, and application dependencies. If the entire display channel responds slowly, examine network latency, packet loss, display protocol behavior, and endpoint rendering.
+
+When a remote desktop stops responding, use the least destructive recovery operation first. Restart Desktop behaves similarly to restarting the guest operating system and can allow applications to request that data be saved. Reset Desktop is closer to forcing a physical computer reset: open data can be lost, the guest OS restarts, and Horizon Client disconnects. Resetting published applications terminates the open applications without preserving unsaved data. Restart and reset commands can be unavailable when the administrator has not enabled them.
+
+Peripheral failures should be isolated by redirection type. If a scanner operates locally but is missing remotely, test Scanner Redirection rather than passing the device through the USB menu. If a webcam is unavailable in a conferencing application, verify that no local process already owns it, that Real-Time Audio-Video is permitted, and that the session uses a compatible protocol. For serial hardware, verify the client-side adapter driver, COM mapping, port settings, and whether another program already has the port open. For USB hardware, allow time for enumeration and driver initialization before concluding that redirection failed.
+
+Keyboard failures can originate outside Horizon Client. Endpoint security software with anti-keylogging protection can interfere with the transmission of keystrokes to a remote desktop or published application. If no characters appear or a key repeats unexpectedly, checking the endpoint security policy can be more productive than immediately rebuilding the Horizon installation.
+
+If the Windows client installation itself is damaged, the installer supports repair from both interactive and unattended workflows. An interactive repair can be started with `VMware-Horizon-Client-y.y.y-xxxxxx.exe /repair`, while automated maintenance can use `VMware-Horizon-Client-y.y.y-xxxxxx.exe /silent /repair`. Reinstallation should normally follow network, certificate, authentication, policy, session, and redirection checks because many apparent client failures originate elsewhere in the Horizon connection path. 
